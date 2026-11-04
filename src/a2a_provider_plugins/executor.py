@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from a2a.helpers.proto_helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.tasks.task_updater import TaskUpdater
-from a2a.types import Part, TaskState
+from a2a.types import Message, Part, Role, TaskState
 
 from .adapter import ProviderAdapter
 
@@ -28,19 +30,29 @@ class ProviderAgentExecutor(AgentExecutor):
 
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         await updater.update_status(TaskState.TASK_STATE_WORKING)
-        reply = await self._adapter.send(
-            context.get_user_input(),
-            context_id=task.context_id,
-            task_id=task.id,
-        )
-        if not reply.text.strip():
-            raise ValueError("Provider returned an empty response")
-        await updater.add_artifact(
-            [Part(text=reply.text)],
-            name="provider-response",
-            last_chunk=True,
-        )
-        await updater.complete()
+        try:
+            reply = await self._adapter.send(
+                context.get_user_input(),
+                context_id=task.context_id,
+                task_id=task.id,
+            )
+            if not reply.text.strip():
+                raise ValueError("Provider returned an empty response")
+            await updater.add_artifact(
+                [Part(text=reply.text)],
+                name="provider-response",
+                last_chunk=True,
+            )
+            await updater.complete()
+        except Exception as exc:
+            err_msg = Message(
+                role=Role.ROLE_AGENT,
+                message_id=str(uuid4()),
+                context_id=task.context_id,
+                parts=[Part(text=f"Provider execution failed: {type(exc).__name__}: {exc}")],
+            )
+            await updater.update_status(TaskState.TASK_STATE_FAILED, message=err_msg)
+            raise
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if not context.task_id or not context.context_id:
@@ -48,4 +60,3 @@ class ProviderAgentExecutor(AgentExecutor):
         await self._adapter.cancel(task_id=context.task_id)
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
-

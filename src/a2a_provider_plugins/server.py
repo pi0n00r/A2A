@@ -12,12 +12,17 @@ from a2a.server.routes import (
     create_rest_routes,
 )
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
+from a2a.server.tasks.task_store import TaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
     AgentInterface,
     AgentProvider,
     AgentSkill,
+    HTTPAuthSecurityScheme,
+    SecurityRequirement,
+    SecurityScheme,
+    StringList,
 )
 from fastapi import FastAPI
 
@@ -36,10 +41,23 @@ class AgentDescription:
     skill_id: str
     skill_name: str
     skill_description: str
+    auth_scheme: str | None = None
 
 
 def build_agent_card(description: AgentDescription) -> AgentCard:
     base = description.public_url.rstrip("/")
+    security_schemes = None
+    security_requirements = None
+    if description.auth_scheme and description.auth_scheme.strip().lower() == "bearer":
+        security_schemes = {
+            "peerBearer": SecurityScheme(
+                http_auth_security_scheme=HTTPAuthSecurityScheme(scheme="Bearer")
+            )
+        }
+        security_requirements = [
+            SecurityRequirement(schemes={"peerBearer": StringList(list=[])})
+        ]
+
     return AgentCard(
         name=description.name,
         description=description.description,
@@ -73,15 +91,22 @@ def build_agent_card(description: AgentDescription) -> AgentCard:
                 url=f"{base}/a2a/rest",
             ),
         ],
+        security_schemes=security_schemes,
+        security_requirements=security_requirements,
     )
 
 
-def build_app(adapter: ProviderAdapter, description: AgentDescription) -> FastAPI:
+def build_app(
+    adapter: ProviderAdapter,
+    description: AgentDescription,
+    task_store: TaskStore | None = None,
+) -> FastAPI:
     """Create a strict A2A 1.0 app with JSON-RPC and REST bindings."""
     card = build_agent_card(description)
+    store = task_store if task_store is not None else InMemoryTaskStore()
     handler = DefaultRequestHandler(
         agent_executor=ProviderAgentExecutor(adapter),
-        task_store=InMemoryTaskStore(),
+        task_store=store,
         agent_card=card,
     )
     app = FastAPI(title=description.name)
@@ -100,4 +125,3 @@ def build_app(adapter: ProviderAdapter, description: AgentDescription) -> FastAP
         ),
     )
     return app
-
