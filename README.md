@@ -10,6 +10,8 @@ contain independently usable plugins:
 - `codex` - local Codex task delivery with state-aware Queue or Steer selection.
 - `antigravity` - Google Antigravity SDK conversations exposed as A2A tasks.
 
+This branch contains the Codex plugin. See [docs/codex.md](docs/codex.md).
+
 ## Protocol surface
 
 - A2A 1.0 Agent Card at `/.well-known/agent-card.json`

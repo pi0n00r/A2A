@@ -18,6 +18,10 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.3,<9", "pytest-asyncio>=0.25,<1"]
+codex = []
+
+[project.entry-points."a2a_provider_plugins"]
+codex = "a2a_provider_plugins.codex:CodexProvider"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
