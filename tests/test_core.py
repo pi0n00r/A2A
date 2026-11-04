@@ -36,9 +36,7 @@ class FakeAdapter(ProviderAdapter):
         return None
 
 
-def description(
-    *, auth_scheme: str | None = None, bearer_token: str | None = None
-) -> AgentDescription:
+def description(*, auth_scheme: str | None = None) -> AgentDescription:
     """Generate sample agent metadata for unit tests."""
     return AgentDescription(
         name="Example provider",
@@ -51,7 +49,6 @@ def description(
         skill_name="Delegate",
         skill_description="Delegate work to the provider",
         auth_scheme=auth_scheme,
-        bearer_token=bearer_token,
     )
 
 
@@ -148,15 +145,15 @@ def test_build_app_accepts_custom_task_store() -> None:
 def test_build_app_requires_token_or_verifier_when_bearer_advertised() -> None:
     """Verify that advertising bearer auth without credentials raises a ValueError."""
     for token in (None, "", "   "):
-        desc = description(auth_scheme="Bearer", bearer_token=token)
+        desc = description(auth_scheme="Bearer")
         with pytest.raises(ValueError, match="requires bearer_token or token_verifier"):
-            build_app(FakeAdapter(), desc)
+            build_app(FakeAdapter(), desc, bearer_token=token)
 
 
 def test_build_app_enforces_bearer_authentication_on_protected_routes() -> None:
     """Verify that Bearer tokens are enforced on /a2a routes while leaving agent-card public."""
-    desc = description(auth_scheme="Bearer", bearer_token="secret-token-xyz")
-    app = build_app(FakeAdapter(), desc)
+    desc = description(auth_scheme="Bearer")
+    app = build_app(FakeAdapter(), desc, bearer_token="secret-token-xyz")
     client = TestClient(app)
 
     # 1. Agent card discovery remains public without authentication
@@ -188,7 +185,8 @@ def test_build_app_rejects_non_ascii_bearer_token_without_server_error() -> None
     """Verify that non-ASCII credentials compare safely and return 401."""
     app = build_app(
         FakeAdapter(),
-        description(auth_scheme="Bearer", bearer_token="ascii-token"),
+        description(auth_scheme="Bearer"),
+        bearer_token="ascii-token",
     )
     client = TestClient(app)
 

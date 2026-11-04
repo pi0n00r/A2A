@@ -47,7 +47,6 @@ class AgentDescription:
     skill_name: str
     skill_description: str
     auth_scheme: str | None = None
-    bearer_token: str | None = None
 
 
 def build_agent_card(description: AgentDescription) -> AgentCard:
@@ -127,7 +126,7 @@ def build_app(
         description.auth_scheme and description.auth_scheme.strip().lower() == "bearer"
     )
     if is_bearer:
-        active_token = bearer_token if bearer_token is not None else description.bearer_token
+        active_token = bearer_token
         if (active_token is None or not active_token.strip()) and token_verifier is None:
             raise ValueError(
                 "Bearer authentication advertised in agent card requires "
