@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import uuid4
 
 from a2a.helpers.proto_helpers import new_task_from_user_message
@@ -13,14 +14,18 @@ from a2a.types import Message, Part, Role, TaskState
 
 from .adapter import ProviderAdapter
 
+logger = logging.getLogger(__name__)
+
 
 class ProviderAgentExecutor(AgentExecutor):
     """Map the A2A task lifecycle to a thin provider implementation."""
 
     def __init__(self, adapter: ProviderAdapter) -> None:
+        """Initialize the executor with the target provider adapter."""
         self._adapter = adapter
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Execute a provider request and stream lifecycle events to the client."""
         task = context.current_task
         if task is None:
             if context.message is None:
@@ -45,16 +50,18 @@ class ProviderAgentExecutor(AgentExecutor):
             )
             await updater.complete()
         except Exception as exc:
+            logger.exception("Provider execution failed for task %s", task.id)
             err_msg = Message(
                 role=Role.ROLE_AGENT,
                 message_id=str(uuid4()),
                 context_id=task.context_id,
-                parts=[Part(text=f"Provider execution failed: {type(exc).__name__}: {exc}")],
+                parts=[Part(text=f"Provider execution failed: {type(exc).__name__}")],
             )
             await updater.update_status(TaskState.TASK_STATE_FAILED, message=err_msg)
             raise
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Cancel an in-flight provider execution."""
         if not context.task_id or not context.context_id:
             raise ValueError("Cancellation requires a task and context")
         await self._adapter.cancel(task_id=context.task_id)

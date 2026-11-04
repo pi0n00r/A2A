@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -24,7 +26,8 @@ from a2a.types import (
     SecurityScheme,
     StringList,
 )
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from .adapter import ProviderAdapter
 from .executor import ProviderAgentExecutor
@@ -32,6 +35,8 @@ from .executor import ProviderAgentExecutor
 
 @dataclass(frozen=True, slots=True)
 class AgentDescription:
+    """Metadata describing the agent and its exposed interfaces."""
+
     name: str
     description: str
     version: str
@@ -42,9 +47,11 @@ class AgentDescription:
     skill_name: str
     skill_description: str
     auth_scheme: str | None = None
+    bearer_token: str | None = None
 
 
 def build_agent_card(description: AgentDescription) -> AgentCard:
+    """Build a standards-compliant AgentCard from provider metadata."""
     base = description.public_url.rstrip("/")
     security_schemes = None
     security_requirements = None
@@ -98,8 +105,15 @@ def build_app(
     adapter: ProviderAdapter,
     description: AgentDescription,
     task_store: TaskStore | None = None,
+    *,
+    bearer_token: str | None = None,
+    token_verifier: Callable[[str], bool] | None = None,
 ) -> FastAPI:
-    """Create a strict A2A 1.0 app with JSON-RPC and REST bindings."""
+    """Create a strict A2A 1.0 app with JSON-RPC and REST bindings.
+
+    If Bearer authentication is advertised in the agent card, enforcement is added
+    to protect A2A task routes against unauthenticated requests.
+    """
     card = build_agent_card(description)
     store = task_store if task_store is not None else InMemoryTaskStore()
     handler = DefaultRequestHandler(
@@ -108,6 +122,38 @@ def build_app(
         agent_card=card,
     )
     app = FastAPI(title=description.name)
+
+    is_bearer = bool(
+        description.auth_scheme and description.auth_scheme.strip().lower() == "bearer"
+    )
+    if is_bearer:
+        active_token = bearer_token if bearer_token is not None else description.bearer_token
+        if active_token is None and token_verifier is None:
+            raise ValueError(
+                "Bearer authentication advertised in agent card requires "
+                "bearer_token or token_verifier"
+            )
+
+        if token_verifier is not None:
+            verifier = token_verifier
+        else:
+            expected = active_token
+
+            def verifier(token: str) -> bool:
+                return secrets.compare_digest(token, expected)
+
+        @app.middleware("http")
+        async def enforce_bearer_auth(request: Request, call_next):
+            # Agent card discovery remains public; protected A2A routes require Bearer token
+            if request.url.path.startswith("/a2a"):
+                auth_header = request.headers.get("Authorization", "")
+                if not auth_header.startswith("Bearer "):
+                    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+                token = auth_header.removeprefix("Bearer ").strip()
+                if not verifier(token):
+                    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+            return await call_next(request)
+
     add_a2a_routes_to_fastapi(
         app,
         agent_card_routes=create_agent_card_routes(agent_card=card),
