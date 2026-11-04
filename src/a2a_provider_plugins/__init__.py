@@ -12,4 +12,3 @@ __all__ = [
     "build_agent_card",
     "build_app",
 ]
-
