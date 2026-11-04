@@ -147,9 +147,10 @@ def test_build_app_accepts_custom_task_store() -> None:
 
 def test_build_app_requires_token_or_verifier_when_bearer_advertised() -> None:
     """Verify that advertising bearer auth without credentials raises a ValueError."""
-    desc = description(auth_scheme="Bearer")
-    with pytest.raises(ValueError, match="requires bearer_token or token_verifier"):
-        build_app(FakeAdapter(), desc)
+    for token in (None, "", "   "):
+        desc = description(auth_scheme="Bearer", bearer_token=token)
+        with pytest.raises(ValueError, match="requires bearer_token or token_verifier"):
+            build_app(FakeAdapter(), desc)
 
 
 def test_build_app_enforces_bearer_authentication_on_protected_routes() -> None:
@@ -181,3 +182,18 @@ def test_build_app_enforces_bearer_authentication_on_protected_routes() -> None:
     )
     # The request passes authentication (does not return 401 Unauthorized)
     assert valid_resp.status_code != 401
+
+
+def test_build_app_rejects_non_ascii_bearer_token_without_server_error() -> None:
+    """Verify that non-ASCII credentials compare safely and return 401."""
+    app = build_app(
+        FakeAdapter(),
+        description(auth_scheme="Bearer", bearer_token="ascii-token"),
+    )
+    client = TestClient(app)
+
+    invalid_resp = client.post(
+        "/a2a/rest/tasks",
+        headers=[(b"Authorization", b"Bearer token-\xf1")],
+    )
+    assert invalid_resp.status_code == 401

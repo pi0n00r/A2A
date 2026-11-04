@@ -128,7 +128,7 @@ def build_app(
     )
     if is_bearer:
         active_token = bearer_token if bearer_token is not None else description.bearer_token
-        if active_token is None and token_verifier is None:
+        if (active_token is None or not active_token.strip()) and token_verifier is None:
             raise ValueError(
                 "Bearer authentication advertised in agent card requires "
                 "bearer_token or token_verifier"
@@ -137,10 +137,10 @@ def build_app(
         if token_verifier is not None:
             verifier = token_verifier
         else:
-            expected = active_token
+            expected = active_token.encode("utf-8")
 
             def verifier(token: str) -> bool:
-                return secrets.compare_digest(token, expected)
+                return secrets.compare_digest(token.encode("utf-8"), expected)
 
         @app.middleware("http")
         async def enforce_bearer_auth(request: Request, call_next):
