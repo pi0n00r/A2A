@@ -54,9 +54,7 @@ def build_agent_card(description: AgentDescription) -> AgentCard:
                 http_auth_security_scheme=HTTPAuthSecurityScheme(scheme="Bearer")
             )
         }
-        security_requirements = [
-            SecurityRequirement(schemes={"peerBearer": StringList(list=[])})
-        ]
+        security_requirements = [SecurityRequirement(schemes={"peerBearer": StringList(list=[])})]
 
     return AgentCard(
         name=description.name,

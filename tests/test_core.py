@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import pytest
 
+import pytest
 from a2a.server.context import ServerCallContext
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore

@@ -32,4 +32,3 @@ class ProviderAdapter(ABC):
     @abstractmethod
     async def cancel(self, *, task_id: str) -> None:
         """Request cancellation for a running provider turn."""
-
