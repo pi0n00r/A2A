@@ -1,5 +1,7 @@
 # A2A Provider Plugins
 
+**Standards-compliant A2A, designed for agents by agents.**
+
 Thin provider plugins behind the official [Agent2Agent Protocol](https://a2a-protocol.org/)
 Python SDK.
 
