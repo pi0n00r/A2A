@@ -2,23 +2,30 @@
 
 from __future__ import annotations
 
+import logging
+from uuid import uuid4
+
 from a2a.helpers.proto_helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.tasks.task_updater import TaskUpdater
-from a2a.types import Part, TaskState
+from a2a.types import Message, Part, Role, TaskState
 
 from .adapter import ProviderAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderAgentExecutor(AgentExecutor):
     """Map the A2A task lifecycle to a thin provider implementation."""
 
     def __init__(self, adapter: ProviderAdapter) -> None:
+        """Initialize the executor with the target provider adapter."""
         self._adapter = adapter
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Execute a provider request and stream lifecycle events to the client."""
         task = context.current_task
         if task is None:
             if context.message is None:
@@ -28,24 +35,35 @@ class ProviderAgentExecutor(AgentExecutor):
 
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         await updater.update_status(TaskState.TASK_STATE_WORKING)
-        reply = await self._adapter.send(
-            context.get_user_input(),
-            context_id=task.context_id,
-            task_id=task.id,
-        )
-        if not reply.text.strip():
-            raise ValueError("Provider returned an empty response")
-        await updater.add_artifact(
-            [Part(text=reply.text)],
-            name="provider-response",
-            last_chunk=True,
-        )
-        await updater.complete()
+        try:
+            reply = await self._adapter.send(
+                context.get_user_input(),
+                context_id=task.context_id,
+                task_id=task.id,
+            )
+            if not reply.text.strip():
+                raise ValueError("Provider returned an empty response")
+            await updater.add_artifact(
+                [Part(text=reply.text)],
+                name="provider-response",
+                last_chunk=True,
+            )
+            await updater.complete()
+        except Exception as exc:
+            logger.exception("Provider execution failed for task %s", task.id)
+            err_msg = Message(
+                role=Role.ROLE_AGENT,
+                message_id=str(uuid4()),
+                context_id=task.context_id,
+                parts=[Part(text=f"Provider execution failed: {type(exc).__name__}")],
+            )
+            await updater.update_status(TaskState.TASK_STATE_FAILED, message=err_msg)
+            return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Cancel an in-flight provider execution."""
         if not context.task_id or not context.context_id:
             raise ValueError("Cancellation requires a task and context")
         await self._adapter.cancel(task_id=context.task_id)
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
-
