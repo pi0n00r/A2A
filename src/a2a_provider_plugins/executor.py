@@ -58,7 +58,7 @@ class ProviderAgentExecutor(AgentExecutor):
                 parts=[Part(text=f"Provider execution failed: {type(exc).__name__}")],
             )
             await updater.update_status(TaskState.TASK_STATE_FAILED, message=err_msg)
-            raise
+            return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Cancel an in-flight provider execution."""

@@ -127,7 +127,11 @@ def build_app(
     )
     if is_bearer:
         active_token = bearer_token
-        if (active_token is None or not active_token.strip()) and token_verifier is None:
+        if (
+            active_token is None
+            or not active_token.strip()
+            or active_token != active_token.strip()
+        ) and token_verifier is None:
             raise ValueError(
                 "Bearer authentication advertised in agent card requires "
                 "bearer_token or token_verifier"
@@ -144,11 +148,16 @@ def build_app(
         @app.middleware("http")
         async def enforce_bearer_auth(request: Request, call_next):
             # Agent card discovery remains public; protected A2A routes require Bearer token
-            if request.url.path.startswith("/a2a"):
+            request_path = request.url.path
+            root_path = request.scope.get("root_path", "").rstrip("/")
+            if root_path and request_path.startswith(root_path):
+                request_path = request_path[len(root_path) :] or "/"
+            if request_path.startswith("/a2a"):
                 auth_header = request.headers.get("Authorization", "")
-                if not auth_header.startswith("Bearer "):
+                scheme, separator, token = auth_header.partition(" ")
+                if not separator or scheme.lower() != "bearer":
                     return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-                token = auth_header.removeprefix("Bearer ").strip()
+                token = token.strip()
                 if not verifier(token):
                     return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
             return await call_next(request)

@@ -15,6 +15,7 @@ from a2a.types import (
     Task,
     TaskState,
 )
+from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from a2a_provider_plugins import AgentDescription, ProviderAdapter, ProviderReply, build_app
@@ -110,19 +111,20 @@ async def test_executor_failure_transitions_to_failed_state_safely() -> None:
         task_store=task_store,
         agent_card=build_agent_card(description()),
     )
-    with pytest.raises(RuntimeError, match="synthetic provider crash"):
-        await handler.on_message_send(
-            SendMessageRequest(
-                message=Message(
-                    role=Role.ROLE_USER,
-                    message_id="message-err",
-                    context_id="context-err",
-                    parts=[Part(text="fail")],
-                ),
-                configuration=SendMessageConfiguration(accepted_output_modes=["text/plain"]),
+    result = await handler.on_message_send(
+        SendMessageRequest(
+            message=Message(
+                role=Role.ROLE_USER,
+                message_id="message-err",
+                context_id="context-err",
+                parts=[Part(text="fail")],
             ),
-            ServerCallContext(),
-        )
+            configuration=SendMessageConfiguration(accepted_output_modes=["text/plain"]),
+        ),
+        ServerCallContext(),
+    )
+    assert isinstance(result, Task)
+    assert result.status.state == TaskState.TASK_STATE_FAILED
     await asyncio.sleep(0.05)
     call_context = ServerCallContext()
     task_dict = list(task_store._store._store.tasks.values())[0]
@@ -144,7 +146,7 @@ def test_build_app_accepts_custom_task_store() -> None:
 
 def test_build_app_requires_token_or_verifier_when_bearer_advertised() -> None:
     """Verify that advertising bearer auth without credentials raises a ValueError."""
-    for token in (None, "", "   "):
+    for token in (None, "", "   ", " token", "token "):
         desc = description(auth_scheme="Bearer")
         with pytest.raises(ValueError, match="requires bearer_token or token_verifier"):
             build_app(FakeAdapter(), desc, bearer_token=token)
@@ -175,10 +177,24 @@ def test_build_app_enforces_bearer_authentication_on_protected_routes() -> None:
     # 4. Protected A2A routes accept valid bearer token (passes auth layer)
     valid_resp = client.post(
         "/a2a/rest/tasks",
-        headers={"Authorization": "Bearer secret-token-xyz"},
+        headers={"Authorization": "bearer secret-token-xyz"},
     )
     # The request passes authentication (does not return 401 Unauthorized)
     assert valid_resp.status_code != 401
+
+
+def test_build_app_enforces_bearer_authentication_when_mounted() -> None:
+    """Verify that a mounted A2A app still protects its protocol routes."""
+    child = build_app(
+        FakeAdapter(),
+        description(auth_scheme="Bearer"),
+        bearer_token="secret-token-xyz",
+    )
+    parent = FastAPI()
+    parent.mount("/peer", child)
+
+    response = TestClient(parent).post("/peer/a2a/rest/tasks")
+    assert response.status_code == 401
 
 
 def test_build_app_rejects_non_ascii_bearer_token_without_server_error() -> None:
