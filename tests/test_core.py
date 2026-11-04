@@ -197,6 +197,18 @@ def test_build_app_enforces_bearer_authentication_when_mounted() -> None:
     assert response.status_code == 401
 
 
+def test_build_app_enforces_bearer_authentication_on_tenant_routes() -> None:
+    """Verify that SDK tenant-prefixed REST routes cannot bypass authentication."""
+    app = build_app(
+        FakeAdapter(),
+        description(auth_scheme="Bearer"),
+        bearer_token="secret-token-xyz",
+    )
+
+    response = TestClient(app).get("/acme/a2a/rest/tasks")
+    assert response.status_code == 401
+
+
 def test_build_app_rejects_non_ascii_bearer_token_without_server_error() -> None:
     """Verify that non-ASCII credentials compare safely and return 401."""
     app = build_app(

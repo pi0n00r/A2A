@@ -152,7 +152,12 @@ def build_app(
             root_path = request.scope.get("root_path", "").rstrip("/")
             if root_path and request_path.startswith(root_path):
                 request_path = request_path[len(root_path) :] or "/"
-            if request_path.startswith("/a2a"):
+            is_a2a_route = (
+                request_path == "/a2a"
+                or request_path.startswith("/a2a/")
+                or "/a2a/" in request_path
+            )
+            if is_a2a_route:
                 auth_header = request.headers.get("Authorization", "")
                 scheme, separator, token = auth_header.partition(" ")
                 if not separator or scheme.lower() != "bearer":
