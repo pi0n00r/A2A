@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "a2a-provider-plugins"
-version = "0.1.0"
+version = "0.3.0"
 description = "Standards-compliant A2A provider adapter framework"
 readme = "README.md"
 requires-python = ">=3.11"
