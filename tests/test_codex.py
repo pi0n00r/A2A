@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import pytest
 
-from a2a_provider_plugins.codex import CodexProvider, CodexTargetState
+from a2a_provider_plugins.codex import (
+    CodexDispatchError,
+    CodexProvider,
+    CodexTargetState,
+    latest_turn_marker,
+)
 
 
 @dataclass
@@ -46,3 +52,23 @@ async def test_cancel_uses_native_interrupt() -> None:
     await provider.cancel(task_id="task-1")
     assert backend.effect == ("cancel", "thread-1", None)
 
+
+
+def test_latest_turn_marker_honors_codex_home(tmp_path, monkeypatch) -> None:
+    codex_home = tmp_path / "custom-codex"
+    sessions_dir = codex_home / "sessions" / "2026" / "11" / "27"
+    sessions_dir.mkdir(parents=True)
+    thread_id = "019f35e6-92d9-77e0-82a2-822ccb310df3"
+    rollout = sessions_dir / f"rollout-2026-11-27T00-00-00-{thread_id}.jsonl"
+    rollout.write_text(
+        json.dumps({"type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-42"}})
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    assert latest_turn_marker(rollout, thread_id) == ("task_started", "turn-42")
+
+    outside = tmp_path / f"rollout-2026-11-27T00-00-00-{thread_id}.jsonl"
+    outside.write_text(rollout.read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(CodexDispatchError):
+        latest_turn_marker(outside, thread_id)
