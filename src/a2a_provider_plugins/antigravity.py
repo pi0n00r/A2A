@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ class AntigravityProvider(ProviderAdapter):
         *,
         state_path: Path,
         agent_factory: Callable[[Any], Any] | None = None,
+        initial_conversations: Mapping[str, str] | None = None,
     ) -> None:
         if agent_factory is None:
             from google.antigravity import Agent
@@ -31,12 +32,14 @@ class AntigravityProvider(ProviderAdapter):
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
         self._locks: dict[str, asyncio.Lock] = {}
         self._active: dict[str, Any] = {}
-        self._initialize_state()
+        self._initialize_state(initial_conversations)
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._state_path, timeout=10)
 
-    def _initialize_state(self) -> None:
+    def _initialize_state(
+        self, initial_conversations: Mapping[str, str] | None = None
+    ) -> None:
         with self._connect() as db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS conversations (
@@ -44,6 +47,17 @@ class AntigravityProvider(ProviderAdapter):
                     conversation_id TEXT NOT NULL
                 )"""
             )
+            if initial_conversations:
+                for context_id, conversation_id in initial_conversations.items():
+                    if not context_id.strip() or not conversation_id.strip():
+                        raise ValueError(
+                            "initial_conversations keys and values must be non-empty"
+                        )
+                    db.execute(
+                        """INSERT OR IGNORE INTO conversations(context_id, conversation_id)
+                        VALUES (?, ?)""",
+                        (context_id, conversation_id),
+                    )
 
     def _get_conversation(self, context_id: str) -> str | None:
         with self._connect() as db:
@@ -71,7 +85,7 @@ class AntigravityProvider(ProviderAdapter):
     async def send(self, text: str, *, context_id: str, task_id: str) -> ProviderReply:
         lock = self._locks.setdefault(context_id, asyncio.Lock())
         async with lock:
-            conversation_id = self._get_conversation(context_id)
+            conversation_id = await asyncio.to_thread(self._get_conversation, context_id)
             config = self._config_for(conversation_id)
             async with self._agent_factory(config) as agent:
                 response = await agent.chat(text)
@@ -83,7 +97,7 @@ class AntigravityProvider(ProviderAdapter):
                 new_conversation_id = agent.conversation_id
                 if not isinstance(new_conversation_id, str) or not new_conversation_id:
                     raise RuntimeError("Antigravity did not return a conversation identifier")
-                self._set_conversation(context_id, new_conversation_id)
+                await asyncio.to_thread(self._set_conversation, context_id, new_conversation_id)
         return ProviderReply(
             text=response_text,
             provider_task_id=new_conversation_id,
