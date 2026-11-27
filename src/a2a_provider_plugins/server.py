@@ -112,6 +112,10 @@ def build_app(
 
     If Bearer authentication is advertised in the agent card, enforcement is added
     to protect A2A task routes against unauthenticated requests.
+
+    When ``task_store`` is omitted, ``InMemoryTaskStore`` is used for development
+    and testing. Production deployments should supply a durable ``TaskStore`` so
+    task reconciliation survives process restarts.
     """
     card = build_agent_card(description)
     store = task_store if task_store is not None else InMemoryTaskStore()
@@ -161,10 +165,18 @@ def build_app(
                 auth_header = request.headers.get("Authorization", "")
                 scheme, separator, token = auth_header.partition(" ")
                 if not separator or scheme.lower() != "bearer":
-                    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
                 token = token.strip()
                 if not verifier(token):
-                    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
             return await call_next(request)
 
     add_a2a_routes_to_fastapi(
