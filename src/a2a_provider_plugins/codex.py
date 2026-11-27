@@ -33,7 +33,9 @@ class CodexBackend(Protocol):
 
 def latest_turn_marker(path: Path, thread_id: str) -> tuple[str, str]:
     """Return the latest bounded task marker from the exact Codex rollout."""
-    root = (Path.home() / ".codex/sessions").resolve()
+    codex_home = os.environ.get("CODEX_HOME")
+    base_dir = Path(codex_home) if codex_home else Path.home() / ".codex"
+    root = (base_dir / "sessions").resolve()
     resolved = path.resolve(strict=True)
     uid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     expected_name = re.compile(
