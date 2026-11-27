@@ -223,3 +223,24 @@ def test_build_app_rejects_non_ascii_bearer_token_without_server_error() -> None
         headers=[(b"Authorization", b"Bearer token-\xf1")],
     )
     assert invalid_resp.status_code == 401
+
+
+def test_build_app_401_includes_www_authenticate_bearer_header() -> None:
+    """Verify RFC 6750 WWW-Authenticate: Bearer header on 401 responses."""
+    app = build_app(
+        FakeAdapter(),
+        description(auth_scheme="Bearer"),
+        bearer_token="expected-secret",
+    )
+    client = TestClient(app)
+
+    missing_resp = client.post("/a2a/rest/tasks")
+    assert missing_resp.status_code == 401
+    assert missing_resp.headers.get("www-authenticate") == "Bearer"
+
+    wrong_resp = client.post(
+        "/a2a/rest/tasks",
+        headers={"Authorization": "Bearer wrong-secret"},
+    )
+    assert wrong_resp.status_code == 401
+    assert wrong_resp.headers.get("www-authenticate") == "Bearer"

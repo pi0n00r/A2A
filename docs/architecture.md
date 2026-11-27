@@ -14,3 +14,5 @@ task persistence interfaces, transport routes, errors, and task lifecycle valida
 Provider-native conversation identifiers are implementation state. They are never substituted for
 A2A task IDs, context IDs, or message IDs.
 
+
+`build_app()` defaults to `InMemoryTaskStore` for development and testing. Production deployments should pass a durable `TaskStore` so `GetTask` reconciliation survives process restarts and callers never need to guess whether a task ran.
