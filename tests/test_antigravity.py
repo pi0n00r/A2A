@@ -64,3 +64,28 @@ async def test_different_a2a_context_starts_new_conversation(tmp_path) -> None:
     await provider.send("two", context_id="ctx-2", task_id="task-2")
     assert FakeAgent.seen == [None, None]
 
+
+
+async def test_initial_conversations_seeds_without_overwriting_persisted_state(tmp_path) -> None:
+    FakeAgent.seen.clear()
+    state_path = tmp_path / "state.sqlite"
+    provider = AntigravityProvider(
+        FakeConfig(),
+        state_path=state_path,
+        agent_factory=FakeAgent,
+        initial_conversations={"ctx-pinned": "conversation-pinned"},
+    )
+    reply = await provider.send("hello", context_id="ctx-pinned", task_id="task-1")
+    assert reply.provider_task_id == "conversation-pinned"
+    assert FakeAgent.seen == ["conversation-pinned"]
+
+    # Re-initializing with a different seed must preserve the persisted mapping.
+    restarted = AntigravityProvider(
+        FakeConfig(),
+        state_path=state_path,
+        agent_factory=FakeAgent,
+        initial_conversations={"ctx-pinned": "conversation-should-not-overwrite"},
+    )
+    reply2 = await restarted.send("again", context_id="ctx-pinned", task_id="task-2")
+    assert reply2.provider_task_id == "conversation-pinned"
+    assert FakeAgent.seen == ["conversation-pinned", "conversation-pinned"]
